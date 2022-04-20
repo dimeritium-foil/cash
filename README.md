@@ -6,6 +6,7 @@ A simple Linux shell made for educational purposes. It uses the GNU readline lib
 </p>
 
 ## Features
+* A cute looking prompt.
 * History, tab completion, and readline keybinds.
 * Running processes in the background ('&').
 * Pipes ('|').
