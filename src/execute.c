@@ -46,16 +46,16 @@ void execute_input(char** input) {
     input_len = last_arg;
     last_arg--;
 
-    if (last_arg == 0) {
-        fprintf(stderr, "%serror%s: no command supplied\n", colors[ERR_COLOR], color_reset);
-        return;
-    }
-
     // Flag that decides whether to run the command in the background or not
     int run_in_background = 0;
 
     // If a '&' is provided as the last argument, set up command to run in the background
     if (strcmp(input[last_arg], "&") == 0) {
+
+        if (last_arg == 0) {
+            fprintf(stderr, "%serror%s: no command supplied\n", colors[ERR_COLOR], color_reset);
+            return;
+        }
 
         // Erase the '&' sign
         free(input[last_arg]);
