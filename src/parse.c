@@ -8,27 +8,9 @@
 #include "main.h"
 #include "parse.h"
 
+#include "globals.h"
+
 #define MAX_SIZE 256
-
-// ==================================== globals ==================================== 
-
-// Flag set by the SIGCHLD signal handler. contains the terminated child pid
-extern int sigchld_flag;
-
-// Global constants for the username and hostname
-extern char* username;
-extern char* hostname;
-
-extern FILE* logfile;
-extern const char* logfile_name;
-
-// ANSI color codes
-extern const char* colors[];
-extern const char* color_reset;
-
-extern int accent_color;
-
-// ================================================================================= 
 
 char** parse_input() {
     /*
@@ -37,14 +19,10 @@ char** parse_input() {
      * Returns: A null termintaed array of char pointers (strings)
      */
 
-    if (sigchld_flag != 0) {
-        printf("[%d] done\n", sigchld_flag);
-
-        logfile = fopen(logfile_name, "a");
-        fprintf(logfile, "[%d] done\n", sigchld_flag);
-        fclose(logfile);
-
-        sigchld_flag = 0;
+    if (sigchld_flag != -1) {
+        // printf("[%d] done\n", sigchld_flag);
+        remove_bg_process(sigchld_flag);
+        sigchld_flag = -1;
     }
 
     // Generate prompt and start readline input
@@ -54,7 +32,7 @@ char** parse_input() {
     int quotes_occurrences = char_occurrences(input_buffer, '"');
 
     if (quotes_occurrences % 2 == 1) {
-        fprintf(stderr, "%serror%s: mismatched number of string quotes\n", colors[0], color_reset);
+        fprintf(stderr, "%serror%s: mismatched number of string quotes\n", colors[ERR_COLOR], color_reset);
         return NULL;
     }
 
@@ -83,7 +61,7 @@ char** parse_input() {
         else {
             // If a single word has more than 2 quotes something's wrong
             if (char_occurrences(word, '"') > 2) {
-                fprintf(stderr, "%serror%s: misuse of string quotes\n", colors[0], color_reset);
+                fprintf(stderr, "%serror%s: misuse of string quotes\n", colors[ERR_COLOR], color_reset);
                 return NULL;
             }
             else if (char_occurrences(word, '"') == 2) {
@@ -97,7 +75,7 @@ char** parse_input() {
                     word = strtok(NULL, " ");
                 }
                 else {
-                    fprintf(stderr, "%serror%s: misuse of string quotes\n", colors[0], color_reset);
+                    fprintf(stderr, "%serror%s: misuse of string quotes\n", colors[ERR_COLOR], color_reset);
                     return NULL;
                 }
             }
@@ -112,7 +90,7 @@ char** parse_input() {
                     // Handle if a quote is in the middle of the word
                     if (strchr(word, '"') != NULL) {
                         if (word[0] != '"' && word[strlen(word) - 1] != '"') {
-                            fprintf(stderr, "%serror%s: misuse of string quotes\n", colors[0], color_reset);
+                            fprintf(stderr, "%serror%s: misuse of string quotes\n", colors[ERR_COLOR], color_reset);
                             return NULL;
                         }
                     }
@@ -273,4 +251,64 @@ int char_occurrences(char *str, char chr) {
     }
 
     return occurrences;
+}
+
+void add_bg_process(pid_t cpid, char** argv) {
+    /*
+     * Adds a process to the array of currently running background processes
+     *
+     * Arguments:
+     *  cpid: The pid of the child process
+     *  argv: The NULL terminated input array of strings
+     */
+
+    for (int i = 0; i < MAX_BG_PROC; i++) {
+        if (bg_processes[i].pid == -1) {
+            bg_processes[i].pid = cpid;
+
+            printf("[%s%d%s] started in the background\n", colors[PID_COLOR], cpid, color_reset);
+
+            bg_processes[i].command = malloc(sizeof(char*) * MAX_SIZE);
+
+            int j = 0;
+            while (argv[j] != NULL) {
+                bg_processes[i].command[j] = malloc(sizeof(char) * (strlen(argv[j]) + 1));
+                strcpy(bg_processes[i].command[j], argv[j]);
+                j++;
+            }
+
+            bg_processes[i].command[j] = NULL;
+
+            bg_processes[i].command = realloc(bg_processes[i].command, sizeof(char*) * (j + 1));
+
+            break;
+        }
+    }
+}
+
+void remove_bg_process(pid_t cpid) {
+    /*
+     * Removes a process from the array of currently running background processes
+     *
+     * Arguments:
+     *  cpid: The pid of the child process
+     */
+
+    for (int i = 0; i < MAX_BG_PROC; i++) {
+        if (bg_processes[i].pid == cpid) {
+            bg_processes[i].pid = -1;
+
+            printf("[%s%d%s] done\n", colors[PID_COLOR], cpid, color_reset);
+
+            int j = 0;
+            while (bg_processes[i].command[j] != NULL) {
+                printf("%s ", bg_processes[i].command[j]);
+                j++;
+            }
+
+            printf("\n");
+
+            break;
+        }
+    }
 }

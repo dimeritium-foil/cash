@@ -23,4 +23,5 @@ make run
 ## Features I Might Add In The Future
 * Common shortcuts like: ctrl + c [ kill the process ], ctrl + D [ exit ].
 * Semicolons and conditional execution.
-* An asynchronous and more informative SIGCHLD handler, and a `jobs` command.
+* An asynchronous SIGCHLD handler.
+* ~~A more informative SIGCHLD handler, and a `jobs` command.~~ (TODO: Handle hypothetical corner cases.)

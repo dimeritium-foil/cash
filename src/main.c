@@ -14,10 +14,6 @@
 #include "execute.h"
 #include "parse.h"
 
-#define MAX_SIZE 256
-#define MAX_PROMPT_SIZE  16384
-#define FILLER_LINE_SIZE 8129
-
 // ==================================== globals ==================================== 
 
 // Flag set by the SIGCHLD signal handler. contains the terminated child pid
@@ -27,14 +23,13 @@ int sigchld_flag = 0;
 char* username;
 char* hostname;
 
-FILE* logfile;
-const char* logfile_name = "cash.log";
-
 // ANSI color codes     0: Red      1: Green    2: Yellow   3: Blue     4: Purple   5: Cyan
 const char* colors[] = {"\e[0;31m", "\e[0;32m", "\e[0;33m", "\e[0;34m", "\e[0;35m", "\e[0;36m"};
 const char* color_reset = "\e[0m";
 
 int accent_color = 5;
+
+BgProcess bg_processes[MAX_BG_PROC];
 
 // ================================================================================= 
 
@@ -53,9 +48,9 @@ int main() {
     gethostname(hostname, MAX_SIZE);
     hostname = realloc(hostname, sizeof(char) * (strlen(hostname) + 1));
 
-    // Clear log file
-    logfile = fopen(logfile_name, "w");
-    fclose(logfile);
+    // Initialize background processes array
+    for (int i = 0; i < MAX_BG_PROC; i++)
+        bg_processes[i].pid = -1;
 
     while (1) {
         input = parse_input();

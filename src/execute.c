@@ -13,29 +13,12 @@
 
 #include "main.h"
 #include "execute.h"
+#include "parse.h"
+
+#include "globals.h"
 
 #define PREAD  0
 #define PWRITE 1
-
-// ==================================== globals ==================================== 
-
-// Flag set by the SIGCHLD signal handler. contains the terminated child pid
-extern int sigchld_flag;
-
-// Global constants for the username and hostname
-extern char* username;
-extern char* hostname;
-
-extern FILE* logfile;
-extern const char* logfile_name;
-
-// ANSI color codes
-extern const char* colors[];
-extern const char* color_reset;
-
-extern int accent_color;
-
-// ================================================================================= 
 
 void execute_input(char** input) {
     /*
@@ -62,6 +45,11 @@ void execute_input(char** input) {
         last_arg++;
     input_len = last_arg;
     last_arg--;
+
+    if (last_arg == 0) {
+        fprintf(stderr, "%serror%s: no command supplied\n", colors[ERR_COLOR], color_reset);
+        return;
+    }
 
     // Flag that decides whether to run the command in the background or not
     int run_in_background = 0;
@@ -91,7 +79,7 @@ void execute_input(char** input) {
 
     if (fork_pid < 0) {
         // Fork failed
-        fprintf(stderr, "%serror%s: fork failed\n", colors[0], color_reset);
+        fprintf(stderr, "%serror%s: fork failed\n", colors[ERR_COLOR], color_reset);
         exit(1);
     } 
     else if (fork_pid == 0) {
@@ -118,7 +106,7 @@ void execute_input(char** input) {
         execvp(input[0], input);
 
         // execvp never returns if it failed, so this normaly won't execute
-        fprintf(stderr, "%serror%s: command '%s' not found\n", colors[0], color_reset, input[0]);
+        fprintf(stderr, "%serror%s: command '%s' not found\n", colors[ERR_COLOR], color_reset, input[0]);
         exit(EXIT_FAILURE);
     }
     else {
@@ -128,13 +116,10 @@ void execute_input(char** input) {
             waitpid(fork_pid, NULL, 0);
         else {
             rl_save_prompt();
-            printf("[%d] started in the background\n", fork_pid);
+            // printf("[%d] started in the background\n", fork_pid);
+            add_bg_process(fork_pid, input);
             rl_restore_prompt();
             
-            logfile = fopen(logfile_name, "a");
-            fprintf(logfile, "[%d] started in the background\n", fork_pid);
-            fclose(logfile);
-
             waitpid(-1, NULL, WNOHANG);
         }
     }
@@ -153,6 +138,7 @@ int execute_builtin(char** input) {
     if (strcmp(input[0], "exit") == 0)
         exit(0);
     else if (strcmp(input[0], "cd") == 0) {
+
         int chdir_code;
 
         // cd into home directory if no argument is given
@@ -162,11 +148,12 @@ int execute_builtin(char** input) {
             chdir_code = chdir(input[1]);
 
         if (chdir_code < 0)
-            fprintf(stderr, "%scd error%s: directory not found\n", colors[0], color_reset);
+            fprintf(stderr, "%scd error%s: directory not found\n", colors[ERR_COLOR], color_reset);
 
         return 1;
     }
     else if (strcmp(input[0], "color") == 0) {
+
         if (input[1] == NULL)
             printf("color: missing operand\nType 'color -h' for proper usage.\n");
         else {
@@ -197,12 +184,40 @@ int execute_builtin(char** input) {
 
         return 1;
     }
+    else if (strcmp(input[0], "jobs") == 0) {
+
+        int count = 0;
+
+        printf("currently running:\n");
+
+        for (int i = 0; i < MAX_BG_PROC; i++) {
+            if (bg_processes[i].pid != -1) {
+                printf("[%s%d%s] ", colors[PID_COLOR], bg_processes[i].pid, color_reset);
+
+                int j = 0;
+                while (bg_processes[i].command[j] != NULL) {
+                    printf("%s ", bg_processes[i].command[j]);
+                    j++;
+                }
+
+                printf("\n");
+                count++;
+            }
+        }
+
+        if (count == 0)
+            printf("none\n");
+
+        return 1;
+    }
     // Display help message
     else if (strcmp(input[0], "help") == 0) {
+
         printf("built-in commands:\n");
         printf("  exit: exit the shell\n");
         printf("  cd: change directory\n");
         printf("  color: change the accent color\n");
+        printf("  jobs: shows the processes running in the background\n");
         printf("  help: show this message\n\n");
 
         printf("features:\n");
@@ -211,6 +226,7 @@ int execute_builtin(char** input) {
         printf("  - pipes ('|')\n");
         printf("  - I/O redirection ('>', '>>', '<')\n");
         printf("  - string quotes (e.g: \"hello\")\n");
+
         return 1;
     }
 
@@ -240,7 +256,7 @@ void execute_piped_inputs(char*** array_of_inputs) {
     // Open each pipe
     for (int i = 0; i < pipes_num; i++) {
         if (pipe(pipes_fds[i]) == -1) {
-            fprintf(stderr, "%serror%s: pipe failed\n", colors[0], color_reset);
+            fprintf(stderr, "%serror%s: pipe failed\n", colors[ERR_COLOR], color_reset);
             return;
         }
     }
@@ -253,7 +269,7 @@ void execute_piped_inputs(char*** array_of_inputs) {
         pids[i] = fork();
 
         if (pids[i] == -1) {
-            fprintf(stderr, "%serror%s: fork failed\n", colors[0], color_reset);
+            fprintf(stderr, "%serror%s: fork failed\n", colors[ERR_COLOR], color_reset);
             return;
         }
 
@@ -283,7 +299,7 @@ void execute_piped_inputs(char*** array_of_inputs) {
             execvp(array_of_inputs[i][0], array_of_inputs[i]);
 
             // execvp never returns if it failed, so this normaly won't execute
-            fprintf(stderr, "%serror%s: command '%s' not found\n", colors[0], color_reset, array_of_inputs[i][0]);
+            fprintf(stderr, "%serror%s: command '%s' not found\n", colors[ERR_COLOR], color_reset, array_of_inputs[i][0]);
             exit(EXIT_FAILURE);
         }
     }
@@ -334,7 +350,7 @@ void redirect_io(char* filename, int io_type, int append_flag) {
     io_file = fopen(filename, mode);
 
     if (io_file == NULL) {
-        fprintf(stderr, "%serror%s: I/O redirection failed\n", colors[0], color_reset);
+        fprintf(stderr, "%serror%s: I/O redirection failed\n", colors[ERR_COLOR], color_reset);
         exit(EXIT_FAILURE);
     }
 
@@ -382,7 +398,7 @@ int handle_io_redirection(char** input) {
     // If both the initial values changed then an operator was found
     if (io_type != 42 && append_flag != 42) {
         if (input[i + 1] == NULL) {
-            fprintf(stderr, "%serror%s: I/O redirection file unspecified\n", colors[0], color_reset);
+            fprintf(stderr, "%serror%s: I/O redirection file unspecified\n", colors[ERR_COLOR], color_reset);
             exit(EXIT_FAILURE);
         }
         else {
